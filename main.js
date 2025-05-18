@@ -89,7 +89,7 @@ const stages = [
 	[mountain, weed, forest, hellbat, oasis, weed, ruins, slate, sanct, mane, darkwood, hellbat, grave, lantern, under, ore]
 ];
 
-const products = [conch, silk, sakura, cactus, tree, bell, claw, bone, feather, prisma, amber, fang, kappa, scale, fruit, tentacle, oni, flame, horn, soul, hellbat, lantern, ore];
+const products = [conch, silk, sakura, cactus, tree, bell, claw, bone, feather, prisma, amber, fang, kappa, scale, fruit, tentacle, oni, flame, horn, soul, hellbat, lantern, ore, mane, slate, weed];
 const cities = [berg, dungeon, mountain, forest, elven, oasis, ruins, sand, sanct, ice, tundra, cave, snow, darkwood, grave, under, volcano, island, isles, whirl, oniisle, reef, ship, storm, sea];
 
 class DynamicSelect {
