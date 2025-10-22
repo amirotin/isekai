@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ISL — Песчаное паломничество: подбор соратников</title>
+  <!-- Tailwind utilities -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Custom split styles -->
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="min-h-screen bg-gray-50 text-gray-900">
+  <div class="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
+    <header class="flex flex-col md:flex-row md:items-end gap-4 md:gap-8">
+      <div class="flex-1">
+        <h1 class="text-2xl md:text-3xl font-bold">ISL — Песчаное паломничество</h1>
+        <p class="text-gray-600">Подбор соратников под заказы с минимальным «переливом» силы. Фиксированные очки, пороги силы, лимиты по количеству.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="saveConfig" class="btn btn-soft">Сохранить</button>
+        <button id="loadConfig" class="btn btn-soft">Загрузить</button>
+        <button id="exportJson" class="btn btn-soft">Экспорт JSON</button>
+        <label class="btn btn-soft cursor-pointer">Импорт JSON <input id="importJson" type="file" accept="application/json" class="hidden" /></label>
+      </div>
+    </header>
+
+    <section class="grid md:grid-cols-2 gap-6">
+      <!-- ЗАКАЗЫ: 7 строк, очки фиксированы, Вкл/Выкл, сила, и Доступно -->
+      <div class="card space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xl font-semibold">Типы заказов</h2>
+          <div class="text-sm text-gray-500">Очки фиксированы. Укажите порог силы и, при желании, лимит по количеству.</div>
+        </div>
+        <div class="grid grid-cols-12 gap-2 text-sm font-medium text-gray-600">
+          <div class="col-span-2">Вкл</div>
+          <div class="col-span-3">Очки</div>
+          <div class="col-span-5">Требуемая сила (B)</div>
+          <div class="col-span-2">Доступно</div>
+        </div>
+        <div id="ordersList" class="space-y-2"></div>
+      </div>
+
+      <!-- СОРАТНИКИ: прокручиваемый список, выпадающий справочник, замочек-резерв -->
+      <div class="card space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xl font-semibold">Соратники</h2>
+          <div class="text-sm text-gray-500">Выбирайте из списка, указывайте силу (B), включайте/резервируйте</div>
+        </div>
+        <div class="flex flex-wrap gap-2 items-center">
+          <button id="addHeroRow" class="btn btn-soft">+ Добавить строку</button>
+          <button id="clearHeroRows" class="btn btn-soft">Очистить список</button>
+        </div>
+        <div class="grid grid-cols-12 gap-2 text-sm font-medium text-gray-600">
+          <div class="col-span-4">Соратник</div>
+          <div class="col-span-3">Сила (B)</div>
+          <div class="col-span-2">Вкл</div>
+          <div class="col-span-3">Резерв</div>
+        </div>
+        <div id="heroesScroll" class="max-h-96 overflow-y-auto pr-1">
+          <div id="heroesList" class="space-y-2"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Массовый импорт соратников -->
+    <section class="card space-y-2">
+      <div class="flex items-center justify-between">
+        <h3 class="font-semibold">Массовый импорт соратников</h3>
+        <div class="text-xs text-gray-500">Формат: <code>Имя - 3.777B</code> или <code>Имя - 958M</code>. Только имена из списка.</div>
+      </div>
+      <div class="grid md:grid-cols-3 gap-2">
+        <textarea id="bulkText" class="input md:col-span-2" rows="5" placeholder="Габраэль - 3.777B
+Керр, Бел и Росс - 2.838B
+Кая - 958M"></textarea>
+        <div class="space-y-2">
+          <button id="parseBulk" class="btn btn-primary w-full">Импортировать</button>
+          <button id="clearBulk" class="btn btn-soft w-full">Очистить поле</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Стратегии и параметры -->
+    <section class="card space-y-4">
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-1">Стратегия расчёта</label>
+          <select id="strategy" class="input">
+            <option value="lazy_limits">По лимитам (ленивый режим)</option>
+            <option value="max_points">Максимум очков (без реролла)</option>
+            <option value="max_points_reroll">Максимум очков + реролл</option>
+            <option value="min_clicks">Минимум кликов</option>
+            <option value="max_orders">Максимум заказов</option>
+          </select>
+          <p class="text-xs text-gray-500 mt-1">Внутри команды минимизируем «перелив».</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Максимальный размер команды</label>
+          <input id="maxTeam" type="number" min="1" max="6" value="4" class="input" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Лимит перелива (B)</label>
+          <input id="wasteLimit" type="number" min="0" step="0.01" value="0.25" class="input" />
+          <p class="text-xs text-gray-500 mt-1">Заказ отбрасывается, если перелив больше порога.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="run" class="btn btn-primary">Запустить подбор</button>
+        <button id="runTests" class="btn btn-soft">Проверка (тесты)</button>
+        <span id="testBadge" class="badge hidden bg-green-100 text-green-700">OK</span>
+      </div>
+    </section>
+
+    <!-- Результаты -->
+    <section class="space-y-4">
+      <div id="totals" class="card hidden"></div>
+      <div id="result" class="grid md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      <div id="unusedWrap" class="card hidden"></div>
+      <div id="testResults" class="card hidden"></div>
+    </section>
+
+    <footer class="text-center text-xs text-gray-500 py-8">v1.6 — стратегии (ленивый/без реролла/с рероллом/минимум кликов/макс. заказов), лимиты по количеству, скролл списка, массовый импорт, LocalStorage.</footer>
+  </div>
+
+  <!-- Split app logic -->
+  <script src="./app.js" defer></script>
+</body>
+</html>
