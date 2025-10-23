@@ -1,14 +1,14 @@
-// storage.js
 import { LS_KEY } from './constants.js';
-import { $, $$ } from './constants.js';
+import { $ } from './constants.js';
 
-export function saveConfig(collectOrdersFromUI, collectHeroesFromUI){
+export function saveConfig(collectOrdersFromUI, collectHeroesFromUI, getSentMarks){
   const data = {
     orders: collectOrdersFromUI(),
     heroes: collectHeroesFromUI(),
     strategy: $('#strategy').value,
     maxTeam: +$('#maxTeam').value,
-    wasteLimit: +($('#wasteLimit').value||0.25)
+    wasteLimit: +($('#wasteLimit').value||0.25),
+    sentMarks: (typeof getSentMarks === 'function') ? getSentMarks() : []
   };
   localStorage.setItem(LS_KEY, JSON.stringify(data));
 }

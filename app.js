@@ -2,7 +2,7 @@
 import { FIXED_ORDERS, HERO_DB, $, $$ } from './constants.js';
 import { saveConfig, loadConfig } from './storage.js';
 import { renderOrdersFixed, collectOrdersFromUI, renderHeroes, collectHeroesFromUI,
-         addHeroRow, clearHeroRows, parseBulkText, renderResults } from './ui.js';
+         addHeroRow, clearHeroRows, parseBulkText, renderResults, SentStore } from './ui.js';
 import { planAssignment } from './strategies.js';
 
 function runPlanner(){
@@ -33,7 +33,11 @@ function init(){
   $('#clearHeroRows').addEventListener('click', clearHeroRows);
   $('#run').addEventListener('click', runPlanner);
 
-  // Bulk
+  // Sorting / filtering controls re-render
+  $('#sortBy')?.addEventListener('change', runPlanner);
+  $('#hideSent')?.addEventListener('change', runPlanner);
+
+  // Bulk import (как было)
   $('#parseBulk').addEventListener('click', ()=>{
     const ta=$('#bulkText');
     const { parsed, skipped } = parseBulkText(ta?.value || '');
@@ -55,7 +59,11 @@ function init(){
   });
 
   // Save/Load/Import/Export
-  $('#saveConfig').addEventListener('click', ()=>{ saveConfig(collectOrdersFromUI, collectHeroesFromUI); alert('Сохранено'); });
+  $('#saveConfig').addEventListener('click', ()=>{
+    saveConfig(collectOrdersFromUI, collectHeroesFromUI, ()=>SentStore.toJSON());
+    alert('Сохранено');
+  });
+
   $('#loadConfig').addEventListener('click', ()=>{
     const cfg=loadConfig(); if(!cfg){alert('Нет сохранённых данных');return;}
     renderOrdersFixed(FIXED_ORDERS.map((o,i)=>({ ...o, ...((cfg.orders||[])[i]||{}) })));
@@ -63,13 +71,24 @@ function init(){
     $('#strategy').value=cfg.strategy||'max_points';
     $('#maxTeam').value=cfg.maxTeam||4;
     $('#wasteLimit').value = (typeof cfg.wasteLimit==='number'? cfg.wasteLimit : 0.25);
+    // восстановить отметки «отправлен»
+    SentStore.fromJSON(cfg.sentMarks || []);
     syncStrategyUI();
   });
+
   $('#exportJson').addEventListener('click', ()=>{
-    const data={ orders: collectOrdersFromUI(), heroes: collectHeroesFromUI(), strategy: $('#strategy').value, maxTeam:+$('#maxTeam').value, wasteLimit:+($('#wasteLimit').value||0.25) };
+    const data={ 
+      orders: collectOrdersFromUI(),
+      heroes: collectHeroesFromUI(),
+      strategy: $('#strategy').value,
+      maxTeam:+$('#maxTeam').value,
+      wasteLimit:+($('#wasteLimit').value||0.25),
+      sentMarks: SentStore.toJSON()
+    };
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='isl_sp_planner_config.json'; a.click();
   });
+
   $('#importJson').addEventListener('change', (e)=>{
     const f=e.target.files?.[0]; if(!f) return; const r=new FileReader();
     r.onload=()=>{ try{
@@ -79,12 +98,15 @@ function init(){
       if(cfg.strategy) $('#strategy').value=cfg.strategy;
       if(cfg.maxTeam) $('#maxTeam').value=cfg.maxTeam;
       if(typeof cfg.wasteLimit==='number') $('#wasteLimit').value=cfg.wasteLimit;
+      // отметки «отправлен»
+      SentStore.fromJSON(cfg.sentMarks || []);
       syncStrategyUI();
     }catch{ alert('Ошибка импорта'); } };
     r.readAsText(f);
   });
 
-  window.addEventListener('beforeunload', ()=>saveConfig(collectOrdersFromUI, collectHeroesFromUI));
+  window.addEventListener('beforeunload', ()=>saveConfig(collectOrdersFromUI, collectHeroesFromUI, ()=>SentStore.toJSON()));
+
   $('#strategy').addEventListener('change', syncStrategyUI);
   syncStrategyUI();
 }
