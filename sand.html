@@ -75,6 +75,7 @@
         <div class="space-y-2">
           <button id="parseBulk" class="btn btn-primary w-full">Импортировать</button>
           <button id="clearBulk" class="btn btn-soft w-full">Очистить поле</button>
+		  <button id="copyHeroList" class="btn btn-soft w-full" title="Скопировать полный список имён для заполнения силы">Скопировать список имён</button>
         </div>
       </div>
     </section>
@@ -118,10 +119,12 @@
       <div id="testResults" class="card hidden"></div>
     </section>
 
-    <footer class="text-center text-xs text-gray-500 py-8">v1.6 — стратегии (ленивый/без реролла/с рероллом/минимум кликов/макс. заказов), лимиты по количеству, скролл списка, массовый импорт, LocalStorage.</footer>
+    <footer class="text-center text-xs text-gray-500 py-8">v1.7 — стратегии (ленивый/без реролла/с рероллом/минимум кликов/макс. заказов), лимиты по количеству, скролл списка, массовый импорт, LocalStorage + подсказки/диагностика.</footer>
   </div>
 
   <!-- Split app logic -->
-  <script src="./app.js" defer></script>
+  <script src="./app.js" type="module"></script>
+  
+  
 </body>
 </html>
