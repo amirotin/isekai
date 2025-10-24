@@ -2,16 +2,12 @@
 import { round3 } from './constants.js';
 
 /* === Настройки эвристик === */
-// «значительный» перелив до апгрейда (B) — применяется только между уровнями РАЗНОЙ эффективности
 const AUG_UP_WASTE_MIN = 0.60;
-// «маленький» перелив после апгрейда (B)
 const AUG_TARGET_WASTE_MAX = 0.30;
-// Порог относительной близости эффективности (например, 40 и 50): 1% по умолчанию
 const SAME_EFF_REL_TOL = 0.01;
-// Максимальный размер команды (в max-режимах — всегда 6)
 const HARD_CAP = 6;
 
-/* ---------- Подбор минимального перелива (meet-in-the-middle) ---------- */
+/* ---------- Подбор минимального перелива ---------- */
 function bestPackMinWaste(pool, thr, cap, preferFewest = false) {
   cap = Math.max(1, Math.min(6, cap || 4));
   const top = pool.slice().sort((a, b) => b.powerB - a.powerB).slice(0, 22);
@@ -48,9 +44,7 @@ function bestPackMinWaste(pool, thr, cap, preferFewest = false) {
     }
   };
 
-  // одиночные половины
   for(let s=1;s<=cap;s++){ for(const x of SA[s]) consider(x); for(const x of SB[s]) consider(x); }
-  // комбинации половин
   for(let i=1;i<=cap;i++){
     const Ai=SA[i]; if(!Ai.length) continue;
     for(let j=1;j<=cap-i;j++){
@@ -83,7 +77,6 @@ function isSameEfficiency(curOrder, nextOrder){
   return rel <= SAME_EFF_REL_TOL;
 }
 
-/** Соло-доминанта: исключаем героев, которые в одиночку тянут ЛЮБОЙ «более высокий» тип */
 function filterSoloDominants(pool, ordAll, o, limits) {
   const higher = higherOrders(ordAll, o, limits);
   if (!higher.length) return pool;
@@ -91,44 +84,23 @@ function filterSoloDominants(pool, ordAll, o, limits) {
   return pool.filter(h => h.powerB < minHigherThr - 1e-9);
 }
 
-/** Апгрейд группы на СЛЕДУЮЩИЙ тип одним героем.
- *  Для одинаковой эффективности (например, 40↔50) — не требуем «большого» исходного перелива;
- *  достаточно, чтобы итоговый перелив был малым (≤ AUG_TARGET_WASTE_MAX).
- */
-function tryOneHeroUpgrade(group, currentOrder, nextOrder, leftovers){
-  const capLeft = HARD_CAP - group.members.length;
-  if (capLeft <= 0) return false;
-
-  const need = nextOrder.powerB - group.sumB;
-  if (need <= 1e-9) return false;
-
-  const sameEff = isSameEfficiency(currentOrder, nextOrder);
-
-  const cand = leftovers
-    .filter(h => h.powerB + 1e-9 >= need)
-    .sort((a,b)=> a.powerB - b.powerB)[0];
-  if (!cand) return false;
-
-  const newWaste = group.sumB + cand.powerB - nextOrder.powerB;
-
-  if (sameEff) {
-    if (newWaste > AUG_TARGET_WASTE_MAX) return false;
-  } else {
-    if (!(group.wasteB >= AUG_UP_WASTE_MIN && newWaste <= AUG_TARGET_WASTE_MAX)) return false;
-  }
-
-  // применяем
-  group.members.push(cand);
-  group.sumB = round3(group.sumB + cand.powerB);
-  group.wasteB = round3(newWaste);
-  group.order = String(nextOrder.points);
-  group.points = nextOrder.points;
-  group.thr = nextOrder.powerB;
-
-  const idx = leftovers.findIndex(h=>h.name===cand.name);
-  if (idx>-1) leftovers.splice(idx,1);
-
-  return true;
+/* Хвостовой профиль */
+function tailProfile(pool){
+  if (!pool.length) return { median: 0, p75: 0, mean: 0, max: 0 };
+  const powers = pool.map(h=>h.powerB).sort((a,b)=>a-b);
+  const n = powers.length;
+  const k = Math.max(5, Math.min(25, Math.floor(n * 0.35)));
+  const tail = powers.slice(0, Math.max(1, Math.min(k, n)));
+  const mid = Math.floor(tail.length/2);
+  const median = tail[mid];
+  const p75 = tail[Math.floor(tail.length*0.75)];
+  const mean = tail.reduce((s,x)=>s+x,0) / tail.length;
+  const max  = tail[tail.length-1];
+  return { median, p75, mean, max };
+}
+function typicalTailB(pool){
+  const { p75 } = tailProfile(pool);
+  return p75 || 0;
 }
 
 /* ---------- Главный планировщик ---------- */
@@ -151,32 +123,86 @@ export function planAssignment({ orders, heroes, strategy, maxTeam, wasteLimit }
     if (anyLimits) limits[o.id]--;
   };
 
-  /* === 1) Порядок типов: по эффективности ↓, затем по порогу ↑ (например, 40 → 50) === */
   function sortByEfficiencyThenThreshold(orderList){
-    const buckets = new Map(); // eff -> [orders]
+    const buckets = new Map();
     for(const o of orderList){
       const key = eff(o).toFixed(6);
       if(!buckets.has(key)) buckets.set(key, []);
       buckets.get(key).push(o);
     }
-    const effKeys = Array.from(buckets.keys()).sort((a,b)=> +b - +a); // эффективность убыв
+    const effKeys = Array.from(buckets.keys()).sort((a,b)=> +b - +a);
     const out = [];
     for(const k of effKeys){
-      const arr = buckets.get(k).slice().sort((a,b)=> a.powerB - b.powerB); // порог возр.
+      const arr = buckets.get(k).slice().sort((a,b)=> a.powerB - b.powerB);
       out.push(...arr);
     }
     return out;
   }
 
-  /* === 2) Распределение по стратегиям === */
+  function nextOrderFor(points){
+    const candidates = ordAll.filter(x=> x.points > points && (limits[x.id] ?? Infinity) > 0)
+                             .sort((a,b)=> a.powerB - b.powerB);
+    return candidates[0] || null;
+  }
+
   function assignMaxPoints(orderList, {allowProtect}) {
     const queue = sortByEfficiencyThenThreshold(orderList);
-    for(let oi=0; oi<queue.length; oi++){
+    const TAIL_FUDGE = 1.10;
+    const TARGET_WASTE_MAX = AUG_TARGET_WASTE_MAX;
+
+    const nextOrderForBase = (base) => {
+      const candidates = orderList
+        .filter(x => x.points > base.points && (limits[x.id] ?? Infinity) > 0)
+        .sort((a,b)=> a.powerB - b.powerB);
+      return candidates[0] || null;
+    };
+
+    for (let oi = 0; oi < queue.length; oi++) {
       const base = queue[oi];
-      while ((limits[base.id] ?? Infinity) > 0){
+
+      while ((limits[base.id] ?? Infinity) > 0) {
         const pool = allowProtect ? filterSoloDominants(remaining, ordAll, base, limits) : remaining;
-        const pack = bestPackMinWaste(pool, base.powerB, HARD_CAP);
-        if(!pack) break;
+
+        let pack = bestPackMinWaste(pool, base.powerB, HARD_CAP);
+        if (!pack) break;
+
+        const next = nextOrderForBase(base);
+        if (next) {
+          if (pack.sum + 1e-9 >= next.powerB) {
+            const pack2 = bestPackMinWaste(pool, next.powerB, HARD_CAP);
+            if (pack2) {
+              const used = new Set(pack2.members.map(h=>h.name));
+              remaining = remaining.filter(h=>!used.has(h.name));
+              addGroup(next, pack2);
+              continue;
+            }
+          }
+
+          const gap = next.powerB - pack.sum;
+          if (gap > 1e-9) {
+            const tailB = typicalTailB(pool);
+            if (tailB > 0 && gap <= tailB * TAIL_FUDGE) {
+              const usedNames = new Set(pack.members.map(h=>h.name));
+              const tails = pool.filter(h=>!usedNames.has(h.name))
+                                .filter(h=> h.powerB + 1e-9 >= gap)
+                                .sort((a,b)=> a.powerB - b.powerB);
+              const cand = tails[0];
+              if (cand) {
+                const newWaste = pack.sum + cand.powerB - next.powerB;
+                if (newWaste <= TARGET_WASTE_MAX + 1e-9) {
+                  const mergedPool = [...pack.members, cand];
+                  const pack3 = bestPackMinWaste(mergedPool, next.powerB, HARD_CAP);
+                  const final = pack3 || { members:[...pack.members, cand], sum: pack.sum + cand.powerB, waste: newWaste };
+                  const used2 = new Set(final.members.map(h=>h.name));
+                  remaining = remaining.filter(h=>!used2.has(h.name));
+                  addGroup(next, final);
+                  continue;
+                }
+              }
+            }
+          }
+        }
+
         const used = new Set(pack.members.map(h=>h.name));
         remaining = remaining.filter(h=>!used.has(h.name));
         addGroup(base, pack);
@@ -185,11 +211,9 @@ export function planAssignment({ orders, heroes, strategy, maxTeam, wasteLimit }
   }
 
   if (strategy === 'max_points') {
-    // Защищаем соло-тащеров (например, Эгла — на 75, а не на 40), затем максимизируем очки по эффективности/порогам
     assignMaxPoints(ordAll, {allowProtect:true});
   }
   else if (strategy === 'max_points_reroll') {
-    // Ровно одна группа на 300 — минимум героев
     const o300 = ordAll.find(o=>o.points===300);
     if (o300 && (limits[o300.id]??Infinity) > 0){
       const pack = bestPackMinWaste(remaining, o300.powerB, HARD_CAP, true);
@@ -208,7 +232,6 @@ export function planAssignment({ orders, heroes, strategy, maxTeam, wasteLimit }
     assignMaxPoints(limited, {allowProtect:true});
   }
   else if (strategy === 'min_clicks') {
-    // Простой: от больших очков к меньшим, пачки «сверху»
     const list = [...ordAll].sort((a,b)=> b.points - a.points);
     const takeStrongestUntil = (thr)=>{
       const mem=[]; let sum=0;
@@ -227,7 +250,6 @@ export function planAssignment({ orders, heroes, strategy, maxTeam, wasteLimit }
     }
   }
   else if (strategy === 'max_orders') {
-    // Максимум заказов: от самых дешёвых порогов
     const list = [...ordAll].sort((a,b)=> a.powerB - b.powerB || a.points - b.points);
     const takeStrongestUntil = (thr)=>{
       const mem=[]; let sum=0;
@@ -249,77 +271,6 @@ export function planAssignment({ orders, heroes, strategy, maxTeam, wasteLimit }
     assignMaxPoints(ordAll, {allowProtect:true});
   }
 
-  /* === 3) Локальные апгрейды групп на «следующий» тип одним героем === */
-  let leftovers = remaining.slice();
-  const byPoints = Object.fromEntries(ordAll.map(o=>[o.points,o]));
-  function nextOrderFor(points){
-    const candidates = ordAll.filter(x=> x.points > points).sort((a,b)=> a.powerB - b.powerB);
-    return candidates[0] || null;
-  }
-
-  for(let i=0;i<groups.length;i++){
-    const g = groups[i];
-    const current = byPoints[+g.order];
-    const next = nextOrderFor(+g.order);
-    if(!current || !next) continue;
-    const limLeft = (limits[next.id] ?? Infinity);
-    if (limLeft <= 0) continue;
-    if (tryOneHeroUpgrade(g, current, next, leftovers)) {
-      if (anyLimits) { limits[next.id]--; limits[current.id] = (limits[current.id]??Infinity) + 1; }
-    }
-  }
-
-  /* === 4) Из «хвостов» добираем новые пачки по убыв. эффективности (например, 50, затем 40, затем 60) === */
-  function sortByEfficiencyThenThresholdPoints(orderList){
-    const seq = sortByEfficiencyThenThreshold(orderList).map(o=>o.points);
-    return [...new Set(seq)];
-  }
-  function sortByEfficiencyThenThreshold(orderList){
-    const buckets = new Map();
-    for(const o of orderList){
-      const key = eff(o).toFixed(6);
-      if(!buckets.has(key)) buckets.set(key, []);
-      buckets.get(key).push(o);
-    }
-    const effKeys = Array.from(buckets.keys()).sort((a,b)=> +b - +a);
-    const out = [];
-    for(const k of effKeys){
-      const arr = buckets.get(k).slice().sort((a,b)=> a.powerB - b.powerB);
-      out.push(...arr);
-    }
-    return out;
-  }
-  function fillFromLeftovers(pointsList){
-    for(const pts of pointsList){
-      const o = byPoints[pts];
-      if(!o) continue;
-      while ((limits[o.id] ?? Infinity) > 0){
-        const pack = bestPackMinWaste(leftovers, o.powerB, HARD_CAP);
-        if(!pack) break;
-        const used = new Set(pack.members.map(h => h.name));
-        leftovers = leftovers.filter(h => !used.has(h.name));
-        addGroup(o, pack);
-      }
-    }
-  }
-  fillFromLeftovers(sortByEfficiencyThenThresholdPoints(ordAll));
-
-  /* === 5) Соло-фоллбек: один сильный герой закрывает заказ с большим переливом (в самом конце) === */
-  function soloFallback(){
-    const ordSeq = sortByEfficiencyThenThreshold(ordAll);
-    for(const o of ordSeq){
-      while ((limits[o.id] ?? Infinity) > 0){
-        const idx = leftovers.findIndex(h=>h.powerB + 1e-9 >= o.powerB);
-        if (idx === -1) break;
-        const h = leftovers[idx];
-        leftovers.splice(idx,1);
-        addGroup(o, {members:[h], sum:h.powerB, waste:h.powerB - o.powerB});
-      }
-    }
-  }
-  soloFallback();
-
-  /* === Итоги === */
   const totals = groups.reduce((a,g)=>{a.points+=g.points; a.orders++; a.wasteB+=g.wasteB; return a;},{points:0,orders:0,wasteB:0});
   const usedNames = new Set(groups.flatMap(g=>g.members.map(m=>m.name)));
   const unused = heroes.filter(h=>h.enabled && !h.reserved && !usedNames.has(h.name));

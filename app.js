@@ -1,18 +1,48 @@
-// main.js (entry)
+// app.js
 import { FIXED_ORDERS, HERO_DB, $, $$ } from './constants.js';
 import { saveConfig, loadConfig } from './storage.js';
 import { renderOrdersFixed, collectOrdersFromUI, renderHeroes, collectHeroesFromUI,
          addHeroRow, clearHeroRows, parseBulkText, renderResults, SentStore } from './ui.js';
 import { planAssignment } from './strategies.js';
 
+let lastPlanOut = null;
+
+function groupsToCSV(out){
+  const rows = [['points','thresholdB','sumB','wasteB','size','members']];
+  for(const g of (out?.groups||[])){
+    rows.push([
+      g.points,
+      g.thr,
+      g.sumB,
+      g.wasteB,
+      g.members.length,
+      g.members.map(m=>`${m.name}(${m.powerB.toFixed(3)}B)`).join(' + ')
+    ]);
+  }
+  return rows.map(r=>r.map(x=>{
+    const s = String(x ?? '');
+    return /[",;\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  }).join(';')).join('\n');
+}
+function downloadText(filename, text){
+  const blob=new Blob([text],{type:'text/plain;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  a.click();
+}
+
 function runPlanner(){
+  // Сбрасываем отметки «отправлен» при каждом новом перерасчёте
+  SentStore.clear();
+
   const orders = collectOrdersFromUI();
   const heroes = collectHeroesFromUI();
   const strategy = $('#strategy').value;
   const maxTeam = Math.max(1, Math.min(6, +$('#maxTeam').value || 4));
   const wasteLimit = +($('#wasteLimit').value||0.25);
-  const out = planAssignment({orders, heroes, strategy, maxTeam, wasteLimit});
-  renderResults(out, collectOrdersFromUI);
+  lastPlanOut = planAssignment({orders, heroes, strategy, maxTeam, wasteLimit});
+  renderResults(lastPlanOut, collectOrdersFromUI);
 }
 
 function syncStrategyUI(){
@@ -33,11 +63,9 @@ function init(){
   $('#clearHeroRows').addEventListener('click', clearHeroRows);
   $('#run').addEventListener('click', runPlanner);
 
-  // Sorting / filtering controls re-render
-  $('#sortBy')?.addEventListener('change', runPlanner);
-  $('#hideSent')?.addEventListener('change', runPlanner);
+  $('#sortBy')?.addEventListener('change', ()=> renderResults(lastPlanOut || {groups:[], unused:[], totals:{points:0,orders:0,wasteB:0}}, collectOrdersFromUI));
+  $('#hideSent')?.addEventListener('change', ()=> renderResults(lastPlanOut || {groups:[], unused:[], totals:{points:0,orders:0,wasteB:0}}, collectOrdersFromUI));
 
-  // Bulk import (как было)
   $('#parseBulk').addEventListener('click', ()=>{
     const ta=$('#bulkText');
     const { parsed, skipped } = parseBulkText(ta?.value || '');
@@ -58,22 +86,26 @@ function init(){
     }
   });
 
-  // Save/Load/Import/Export
   $('#saveConfig').addEventListener('click', ()=>{
-    saveConfig(collectOrdersFromUI, collectHeroesFromUI, ()=>SentStore.toJSON());
-    alert('Сохранено');
+    // сохраняем без отметок «отправлен» — они теперь временные на сессию расчёта
+    localStorage.removeItem('isl_sp_planner_v17');
+    import('./storage.js').then(({saveConfig})=>{
+      saveConfig(collectOrdersFromUI, collectHeroesFromUI, ()=>[]);
+      alert('Сохранено');
+    });
   });
 
   $('#loadConfig').addEventListener('click', ()=>{
-    const cfg=loadConfig(); if(!cfg){alert('Нет сохранённых данных');return;}
-    renderOrdersFixed(FIXED_ORDERS.map((o,i)=>({ ...o, ...((cfg.orders||[])[i]||{}) })));
-    renderHeroes(cfg.heroes||[]);
-    $('#strategy').value=cfg.strategy||'max_points';
-    $('#maxTeam').value=cfg.maxTeam||4;
-    $('#wasteLimit').value = (typeof cfg.wasteLimit==='number'? cfg.wasteLimit : 0.25);
-    // восстановить отметки «отправлен»
-    SentStore.fromJSON(cfg.sentMarks || []);
-    syncStrategyUI();
+    import('./storage.js').then(({loadConfig})=>{
+      const cfg=loadConfig(); if(!cfg){alert('Нет сохранённых данных');return;}
+      renderOrdersFixed(FIXED_ORDERS.map((o,i)=>({ ...o, ...((cfg.orders||[])[i]||{}) })));
+      renderHeroes(cfg.heroes||[]);
+      $('#strategy').value=cfg.strategy||'max_points';
+      $('#maxTeam').value=cfg.maxTeam||4;
+      $('#wasteLimit').value = (typeof cfg.wasteLimit==='number'? cfg.wasteLimit : 0.25);
+      SentStore.clear(); // после загрузки тоже сбрасываем прошлые отметки
+      syncStrategyUI();
+    });
   });
 
   $('#exportJson').addEventListener('click', ()=>{
@@ -82,8 +114,7 @@ function init(){
       heroes: collectHeroesFromUI(),
       strategy: $('#strategy').value,
       maxTeam:+$('#maxTeam').value,
-      wasteLimit:+($('#wasteLimit').value||0.25),
-      sentMarks: SentStore.toJSON()
+      wasteLimit:+($('#wasteLimit').value||0.25)
     };
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='isl_sp_planner_config.json'; a.click();
@@ -98,14 +129,13 @@ function init(){
       if(cfg.strategy) $('#strategy').value=cfg.strategy;
       if(cfg.maxTeam) $('#maxTeam').value=cfg.maxTeam;
       if(typeof cfg.wasteLimit==='number') $('#wasteLimit').value=cfg.wasteLimit;
-      // отметки «отправлен»
-      SentStore.fromJSON(cfg.sentMarks || []);
+      SentStore.clear();
       syncStrategyUI();
     }catch{ alert('Ошибка импорта'); } };
     r.readAsText(f);
   });
 
-  window.addEventListener('beforeunload', ()=>saveConfig(collectOrdersFromUI, collectHeroesFromUI, ()=>SentStore.toJSON()));
+  window.addEventListener('beforeunload', ()=>{/* не сохраняем отметки sent */});
 
   $('#strategy').addEventListener('change', syncStrategyUI);
   syncStrategyUI();

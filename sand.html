@@ -4,9 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ISL — Песчаное паломничество: подбор соратников</title>
-  <!-- Tailwind utilities -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Custom split styles -->
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body class="min-h-screen bg-gray-50 text-gray-900">
@@ -14,7 +12,7 @@
     <header class="flex flex-col md:flex-row md:items-end gap-4 md:gap-8">
       <div class="flex-1">
         <h1 class="text-2xl md:text-3xl font-bold">ISL — Песчаное паломничество</h1>
-        <p class="text-gray-600">Подбор соратников под заказы с минимальным «переливом» силы. Фиксированные очки, пороги силы, лимиты по количеству.</p>
+        <p class="text-gray-600 mt-1">Твой штаб логистики: герои — по слотам, очки — по максимуму.</p>
       </div>
       <div class="flex items-center gap-2">
         <button id="saveConfig" class="btn btn-soft">Сохранить</button>
@@ -25,7 +23,7 @@
     </header>
 
     <section class="grid md:grid-cols-2 gap-6">
-      <!-- ЗАКАЗЫ: 7 строк, очки фиксированы, Вкл/Выкл, сила, и Доступно -->
+      <!-- ЗАКАЗЫ -->
       <div class="card space-y-4">
         <div class="flex items-center justify-between">
           <h2 class="text-xl font-semibold">Типы заказов</h2>
@@ -40,29 +38,31 @@
         <div id="ordersList" class="space-y-2"></div>
       </div>
 
-      <!-- СОРАТНИКИ: прокручиваемый список, выпадающий справочник, замочек-резерв -->
+      <!-- СОРАТНИКИ (без резерва) -->
       <div class="card space-y-4">
         <div class="flex items-center justify-between">
           <h2 class="text-xl font-semibold">Соратники</h2>
-          <div class="text-sm text-gray-500">Выбирайте из списка, указывайте силу (B), включайте/резервируйте</div>
+          <div class="text-sm text-gray-500">Выбирайте из списка, указывайте силу (B), включайте для расчёта</div>
         </div>
         <div class="flex flex-wrap gap-2 items-center">
           <button id="addHeroRow" class="btn btn-soft">+ Добавить строку</button>
           <button id="clearHeroRows" class="btn btn-soft">Очистить список</button>
         </div>
         <div class="grid grid-cols-12 gap-2 text-sm font-medium text-gray-600">
-          <div class="col-span-4">Соратник</div>
-          <div class="col-span-3">Сила (B)</div>
+          <div class="col-span-6">Соратник</div>
+          <div class="col-span-4">Сила (B)</div>
           <div class="col-span-2">Вкл</div>
-          <div class="col-span-3">Резерв</div>
         </div>
         <div id="heroesScroll" class="max-h-96 overflow-y-auto pr-1">
           <div id="heroesList" class="space-y-2"></div>
         </div>
+        <div class="flex justify-end">
+          <button id="copyHeroList" class="btn btn-soft">Скопировать список имён</button>
+        </div>
       </div>
     </section>
 
-    <!-- Массовый импорт соратников -->
+    <!-- Массовый импорт -->
     <section class="card space-y-2">
       <div class="flex items-center justify-between">
         <h3 class="font-semibold">Массовый импорт соратников</h3>
@@ -75,12 +75,12 @@
         <div class="space-y-2">
           <button id="parseBulk" class="btn btn-primary w-full">Импортировать</button>
           <button id="clearBulk" class="btn btn-soft w-full">Очистить поле</button>
-		  <button id="copyHeroList" class="btn btn-soft w-full" title="Скопировать полный список имён для заполнения силы">Скопировать список имён</button>
+          <button id="copyHeroList" class="btn btn-soft w-full" title="Скопировать полный список имён для заполнения силы">Скопировать список имён</button>
         </div>
       </div>
     </section>
 
-    <!-- Стратегии и параметры -->
+    <!-- Настройки / стратегии -->
     <section class="card space-y-4">
       <div class="grid md:grid-cols-3 gap-4">
         <div>
@@ -92,7 +92,6 @@
             <option value="min_clicks">Минимум кликов</option>
             <option value="max_orders">Максимум заказов</option>
           </select>
-          <p class="text-xs text-gray-500 mt-1">Внутри команды минимизируем «перелив».</p>
         </div>
         <div>
           <label class="block text-sm font-medium mb-1">Максимальный размер команды</label>
@@ -101,49 +100,41 @@
         <div>
           <label class="block text-sm font-medium mb-1">Лимит перелива (B)</label>
           <input id="wasteLimit" type="number" min="0" step="0.01" value="0.25" class="input" />
-          <p class="text-xs text-gray-500 mt-1">Заказ отбрасывается, если перелив больше порога.</p>
         </div>
       </div>
       <div class="flex items-center gap-2">
         <button id="run" class="btn btn-primary">Запустить подбор</button>
-        <button id="runTests" class="btn btn-soft">Проверка (тесты)</button>
-        <span id="testBadge" class="badge hidden bg-green-100 text-green-700">OK</span>
       </div>
     </section>
 
     <!-- Результаты -->
     <section class="space-y-4">
       <div id="totals" class="card hidden"></div>
-		<!-- Controls for sorting/filtering results -->
-		<div id="resultControls" class="mt-3 flex flex-wrap gap-3 items-center">
-		  <label class="text-sm flex items-center gap-2">
-			Сортировка:
-			<select id="sortBy" class="input">
-			  <option value="none">Без сортировки</option>
-			  <option value="wasteAsc">Перелив ↑</option>
-			  <option value="wasteDesc">Перелив ↓</option>
-			  <option value="sizeAsc">Размер команды ↑</option>
-			  <option value="sizeDesc">Размер команды ↓</option>
-			  <option value="pointsDesc">Очки ↓</option>
-			  <option value="thrAsc">Порог силы ↑</option>
-			</select>
-		  </label>
-		  <label class="text-sm flex items-center gap-2">
-			<input type="checkbox" id="hideSent">
-			Скрыть «отправленные»
-		  </label>
-		</div>
+      <div id="resultControls" class="mt-3 flex flex-wrap gap-3 items-center">
+        <label class="text-sm flex items-center gap-2">
+          Сортировка:
+          <select id="sortBy" class="input">
+            <option value="none">Без сортировки</option>
+            <option value="wasteAsc">Перелив ↑</option>
+            <option value="wasteDesc">Перелив ↓</option>
+            <option value="sizeAsc">Размер команды ↑</option>
+            <option value="sizeDesc">Размер команды ↓</option>
+            <option value="pointsDesc">Очки ↓</option>
+            <option value="thrAsc">Порог силы ↑</option>
+          </select>
+        </label>
+        <label class="text-sm flex items-center gap-2">
+          <input type="checkbox" id="hideSent">
+          Скрыть «отправленные»
+        </label>
+      </div>
       <div id="result" class="grid md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       <div id="unusedWrap" class="card hidden"></div>
-      <div id="testResults" class="card hidden"></div>
     </section>
 
-    <footer class="text-center text-xs text-gray-500 py-8">v1.7 — стратегии (ленивый/без реролла/с рероллом/минимум кликов/макс. заказов), лимиты по количеству, скролл списка, массовый импорт, LocalStorage + подсказки/диагностика.</footer>
+    <footer class="text-center text-xs text-gray-500 py-8">v1.7 — считает лучше, чем гоблин-бухгалтер.</footer>
   </div>
 
-  <!-- Split app logic -->
   <script src="./app.js" type="module"></script>
-  
-  
 </body>
 </html>

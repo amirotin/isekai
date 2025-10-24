@@ -1,5 +1,5 @@
-import { LS_KEY } from './constants.js';
-import { $ } from './constants.js';
+// storage.js
+import { LS_KEY, $ } from './constants.js';
 
 export function saveConfig(collectOrdersFromUI, collectHeroesFromUI, getSentMarks){
   const data = {
