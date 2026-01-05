@@ -1,0 +1,858 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Пиксель Арт для Шахмат</title>
+  <style>
+    :root { --bg:#0b1020; --panel:#121a33; --text:#e7ecff; --muted:#aab4e6; }
+    * { box-sizing: border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: linear-gradient(180deg, #070a16, #0b1020 35%, #070a16);
+      color: var(--text);
+      display:grid;
+      grid-template-columns: 360px 1fr;
+      height:100vh;
+      overflow:hidden;
+    }
+    aside{
+      padding:14px;
+      background: rgba(18,26,51,.92);
+      border-right: 1px solid rgba(255,255,255,.08);
+      height:100vh;
+      overflow:auto;
+    }
+    main{
+      padding:14px;
+      height:100vh;
+      overflow:hidden;
+      display:flex;
+    }
+    h1{ font-size:16px; margin:0 0 10px; }
+    .hint{ color:var(--muted); font-size:12px; line-height:1.35; margin:6px 0 12px; }
+    .group{ border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px; margin:10px 0; }
+    .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    label{ font-size:12px; color:var(--muted); }
+    input[type="range"]{ width:100%; }
+    input[type="number"]{
+      width:92px; padding:6px 8px; border-radius:10px;
+      border:1px solid rgba(255,255,255,.12); background:#0a0f24; color:var(--text);
+    }
+    textarea{
+      width:100%; padding:8px 10px; border-radius:10px;
+      border:1px solid rgba(255,255,255,.12); background:#0a0f24; color:var(--text);
+      min-height:110px; resize:vertical;
+    }
+    button{
+      padding:8px 10px; border-radius:12px;
+      border:1px solid rgba(255,255,255,.14);
+      background:#0e1633; color:var(--text); cursor:pointer;
+    }
+    button:hover{ filter:brightness(1.08); }
+    button:active{ transform: translateY(1px); }
+    .btn-danger{ border-color: rgba(255,110,110,.35); }
+    .btn-good{ border-color: rgba(110,255,200,.28); }
+    .pill{
+      padding:4px 8px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(10,15,36,.8);
+      font-size:12px; color:var(--muted);
+    }
+    .palette{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+    .sw{
+      width:32px; height:32px; border-radius:10px;
+      border:2px solid rgba(255,255,255,.12);
+      cursor:pointer; position:relative; overflow:hidden;
+    }
+    .sw.selected{ outline:2px solid rgba(255,255,255,.7); outline-offset:2px; }
+    .sw::after{ content:''; position:absolute; inset:0; background:linear-gradient(135deg, rgba(255,255,255,.12), rgba(0,0,0,0)); pointer-events:none; }
+
+    .canvasWrap{
+      position:relative;
+      flex:1;
+      height:100%;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.10);
+      overflow:hidden;
+      background:#050818;
+      box-shadow: 0 12px 40px rgba(0,0,0,.45);
+      min-width: 0;
+    }
+    canvas{ display:block; width:100%; height:100%; cursor: crosshair; }
+    .hud{
+      position:absolute; left:10px; top:10px;
+      display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+      pointer-events:none; user-select:none;
+    }
+    .kbd{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .small{ font-size:12px; color:var(--muted); }
+    .split{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+    .chk{ display:flex; gap:8px; align-items:center; }
+  </style>
+</head>
+<body>
+  <aside>
+    <h1>Hex Pixel Art Planner</h1>
+    <div class="hint">
+      ЛКМ — красить, ПКМ — стереть, зажатие — кисть.<br/>
+      Колесо мыши — зум (в точку курсора).<br/>
+      <b>Shift+drag</b> или <b>средняя кнопка</b> — панорамирование.<br/>
+      Блокированные клетки задаются в коде, клики по ним игнорируются.
+    </div>
+
+    <div class="group">
+      <label>Фон карты</label>
+      <div class="row" style="margin-top:6px;">
+        <input id="bgFile" type="file" accept="image/*" />
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button id="fitBtn" class="btn-good">Fit (вписать)</button>
+        <button id="oneBtn">100%</button>
+        <button id="zoomOutBtn">−</button>
+        <button id="zoomInBtn">+</button>
+        <button id="clearBgBtn" class="btn-danger">Убрать фон</button>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label>Zoom: <span id="zoomLbl" class="small">100%</span></label>
+      </div>
+      <input id="zoomSlider" type="range" min="10" max="400" step="1" value="100" />
+    </div>
+
+    <div class="group">
+      <label>Палитра</label>
+      <div class="palette" id="palette"></div>
+
+      <div class="row" style="margin-top:10px;">
+        <div class="chk"><input id="cycleOnClick" type="checkbox" /><label for="cycleOnClick">Цикл цветов по клику</label></div>
+        <div class="chk"><input id="showGrid" type="checkbox" checked /><label for="showGrid">Показывать сетку</label></div>
+      </div>
+
+      <div style="margin-top:10px;">
+        <label>Прозрачность заливки: <span id="alphaLbl" class="small">0.45</span></label>
+        <input id="alpha" type="range" min="0" max="0.9" step="0.05" value="0.45" />
+      </div>
+    </div>
+
+    <div class="group">
+      <label>Сетка</label>
+      <div class="split" style="margin-top:8px;">
+        <div>
+          <label>Rows</label>
+          <input id="rows" type="number" min="1" max="80" value="29"/>
+        </div>
+        <div>
+          <label>Cols</label>
+          <input id="cols" type="number" min="1" max="80" value="29"/>
+        </div>
+      </div>
+
+      <div style="margin-top:10px;">
+        <label>Hex size (px в координатах карты): <span id="sizeLbl" class="small"></span></label>
+        <input id="hexSize" type="range" min="10" max="90" step="0.5" value="40" />
+      </div>
+
+      <div class="split" style="margin-top:10px;">
+        <div>
+          <label>Offset X (центр [0,0])</label>
+          <input id="offX" type="number" step="0.5" value="42.5" />
+        </div>
+        <div>
+          <label>Offset Y (центр [0,0])</label>
+          <input id="offY" type="number" step="0.5" value="70" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:8px;">
+        <button data-nudge="-5" data-axis="x">X −5</button>
+        <button data-nudge="-1" data-axis="x">X −1</button>
+        <button data-nudge="1" data-axis="x">X +1</button>
+        <button data-nudge="5" data-axis="x">X +5</button>
+        <span class="pill"> </span>
+        <button data-nudge="-5" data-axis="y">Y −5</button>
+        <button data-nudge="-1" data-axis="y">Y −1</button>
+        <button data-nudge="1" data-axis="y">Y +1</button>
+        <button data-nudge="5" data-axis="y">Y +5</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <label>Сохранение / загрузка</label>
+      <div class="row" style="margin-top:8px;">
+        <button id="exportJsonBtn">Экспорт JSON</button>
+        <button id="importJsonBtn">Импорт JSON</button>
+        <button id="downloadPngBtn" class="btn-good">Экспорт PNG (видимая область)</button>
+      </div>
+      <div style="margin-top:8px;">
+        <textarea id="jsonBox" placeholder="Тут появится JSON (или вставь сюда и нажми Импорт)"></textarea>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button id="clearPaintBtn" class="btn-danger">Очистить рисунок</button>
+      </div>
+    </div>
+
+    <div class="hint kbd">
+      Быстрые клавиши: 1..9 — выбор цвета, Esc — отмена кисти
+    </div>
+  </aside>
+
+  <main>
+    <div class="canvasWrap" id="wrap">
+      <canvas id="cv"></canvas>
+      <div class="hud">
+        <div class="pill" id="coord">col: —  row: —</div>
+        <div class="pill" id="viewPill">zoom: 100%</div>
+      </div>
+    </div>
+  </main>
+
+<script>
+(() => {
+  // ======= 1) ПАЛИТРА =======
+  const PALETTE = [
+    { name: "Красный",   hex: "#ff4d4d" },
+    { name: "Оранжевый", hex: "#ff9f2e" },
+    { name: "Жёлтый",    hex: "#ffe04d" },
+    { name: "Зелёный",   hex: "#41ff9a" },
+    { name: "Бирюза",    hex: "#42d6ff" },
+    { name: "Синий",     hex: "#4f7bff" },
+    { name: "Фиолетовый",hex: "#b34dff" },
+    { name: "Розовый",   hex: "#ff4dd2" },
+    { name: "Белый",     hex: "#ffffff" },
+  ];
+
+  // ======= 2) ЗАБЛОКИРОВАННЫЕ КЛЕТКИ =======
+  // Формат: [col, row]
+  const BLOCKED_CELLS = [
+    // пример:
+	[4,0], [8,0], [14,0], [20,0], [24,0],
+	[0,2], [1,3], [27,3], [28,2],
+	[0,6], [1,7], [8,5], [15,4], [15,5], [15,6], [16,4], [20,5], [27,7], [28,6],
+	[3,14], [4,13], [7,14], [8,13], [9,14], [19,15], [20,15], [21,15], [24,14], [25,14],
+	[0,21], [1,21], [0,25], [1,25], [3,28], [7,28], [8,23],
+	[12,24], [13,25], [13,24], [13,23], [20,23],
+	[21,28], [25,28], [27,25], [28,25], [27,21], [28,21]
+  ];
+
+  const els = {
+    wrap: document.getElementById('wrap'),
+    cv: document.getElementById('cv'),
+    bgFile: document.getElementById('bgFile'),
+
+    fitBtn: document.getElementById('fitBtn'),
+    oneBtn: document.getElementById('oneBtn'),
+    zoomInBtn: document.getElementById('zoomInBtn'),
+    zoomOutBtn: document.getElementById('zoomOutBtn'),
+    clearBgBtn: document.getElementById('clearBgBtn'),
+
+    zoomSlider: document.getElementById('zoomSlider'),
+    zoomLbl: document.getElementById('zoomLbl'),
+    viewPill: document.getElementById('viewPill'),
+
+    palette: document.getElementById('palette'),
+    cycleOnClick: document.getElementById('cycleOnClick'),
+    showGrid: document.getElementById('showGrid'),
+
+    alpha: document.getElementById('alpha'),
+    alphaLbl: document.getElementById('alphaLbl'),
+
+    rows: document.getElementById('rows'),
+    cols: document.getElementById('cols'),
+    hexSize: document.getElementById('hexSize'),
+    sizeLbl: document.getElementById('sizeLbl'),
+    offX: document.getElementById('offX'),
+    offY: document.getElementById('offY'),
+
+    coord: document.getElementById('coord'),
+
+    exportJsonBtn: document.getElementById('exportJsonBtn'),
+    importJsonBtn: document.getElementById('importJsonBtn'),
+    jsonBox: document.getElementById('jsonBox'),
+    downloadPngBtn: document.getElementById('downloadPngBtn'),
+
+    clearPaintBtn: document.getElementById('clearPaintBtn'),
+  };
+
+  const ctx = els.cv.getContext('2d');
+
+  // ======= State =======
+  const state = {
+    rows: 29,
+    cols: 29,
+    size: 40,      // hex radius (в координатах карты/картинки)
+    offX: 42.5,    // центр клетки (0,0) в координатах карты/картинки
+    offY: 70,      // (для even-q часто нужно чуть больше, чем раньше)
+    alpha: 0.45,
+    selectedColor: 0,
+    paint: [],
+    blocked: [],
+    bg: null,      // Image
+    bgEnabled: true,
+    showGrid: true,
+    cycleOnClick: false,
+
+    // VIEW (экранные координаты canvas)
+    view: {
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      minZoom: 0.1,
+      maxZoom: 6,
+    },
+  };
+
+  function applyBlockedFromList() {
+    for (let r = 0; r < state.rows; r++) state.blocked[r].fill(false);
+    for (const [c, r] of BLOCKED_CELLS) {
+      if (Number.isInteger(c) && Number.isInteger(r) && r>=0 && r<state.rows && c>=0 && c<state.cols) {
+        state.blocked[r][c] = true;
+        state.paint[r][c] = -1;
+      }
+    }
+  }
+
+  function allocGrids() {
+    state.paint = Array.from({length: state.rows}, () => Array(state.cols).fill(-1));
+    state.blocked = Array.from({length: state.rows}, () => Array(state.cols).fill(false));
+    applyBlockedFromList();
+  }
+  allocGrids();
+
+  // ======= Geometry: FLAT-TOP + EVEN-Q (0,0 ниже 1,0) =======
+  function hexMetrics() {
+    const s = state.size;
+    const h = Math.sqrt(3) * s;
+    const xStep = 1.5 * s;
+    const yStep = h;
+    const yHalf = h / 2;
+    return { s, h, xStep, yStep, yHalf };
+  }
+
+  function centerFor(col, row) {
+    const { xStep, yStep, yHalf } = hexMetrics();
+    const x = state.offX + col * xStep;
+    // even-q: чётные колонки ниже => нечётные выше на h/2
+    const y = state.offY + row * yStep - (col & 1 ? yHalf : 0);
+    return { x, y };
+  }
+
+  function polygonFor(cx, cy) {
+    const { s } = hexMetrics();
+    const pts = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 180) * (60 * i);
+      pts.push({ x: cx + s * Math.cos(a), y: cy + s * Math.sin(a) });
+    }
+    return pts;
+  }
+
+  function cubeRound(x, y, z) {
+    let rx = Math.round(x), ry = Math.round(y), rz = Math.round(z);
+    const dx = Math.abs(rx - x), dy = Math.abs(ry - y), dz = Math.abs(rz - z);
+    if (dx > dy && dx > dz) rx = -ry - rz;
+    else if (dy > dz) ry = -rx - rz;
+    else rz = -rx - ry;
+    return { x: rx, y: ry, z: rz };
+  }
+
+  function pointInPoly(p, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y;
+      const xj = poly[j].x, yj = poly[j].y;
+      const intersect = ((yi > p.y) !== (yj > p.y)) &&
+        (p.x < (xj - xi) * (p.y - yi) / (yj - yi + 1e-12) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  // screen -> world
+  function screenToWorld(sx, sy) {
+    const { zoom, panX, panY } = state.view;
+    return { x: (sx - panX) / zoom, y: (sy - panY) / zoom };
+  }
+
+  // world -> cell
+  function pixelToCell(wx, wy) {
+    const { s } = hexMetrics();
+    const x = wx - state.offX;
+    const y = wy - state.offY;
+
+    const qf = (2/3 * x) / s;
+    const rf = ((-1/3 * x) + (Math.sqrt(3)/3 * y)) / s;
+
+    const cx = qf;
+    const cz = rf;
+    const cy = -cx - cz;
+    const cr = cubeRound(cx, cy, cz);
+
+    const q = cr.x;
+    const r = cr.z;
+
+    const col = q;
+    const row = r + ((q + (q & 1)) / 2); // even-q
+
+    if (row < 0 || row >= state.rows || col < 0 || col >= state.cols) return null;
+
+    const c = centerFor(col, row);
+    if (!pointInPoly({x:wx, y:wy}, polygonFor(c.x, c.y))) return null;
+
+    return { col, row };
+  }
+
+  // ======= Canvas sizing (always fit wrap) =======
+  let dpr = 1;
+  function resizeCanvasToWrap() {
+    const r = els.wrap.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(r.width));
+    const h = Math.max(1, Math.floor(r.height));
+    dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    els.cv.width = Math.floor(w * dpr);
+    els.cv.height = Math.floor(h * dpr);
+    els.cv.style.width = w + 'px';
+    els.cv.style.height = h + 'px';
+    render();
+  }
+
+  // наблюдаем размеры контейнера (без ручного window.resize “угадывания”)
+  new ResizeObserver(resizeCanvasToWrap).observe(els.wrap);
+  window.addEventListener('resize', resizeCanvasToWrap);
+
+  function canvasSize() {
+    return {
+      w: parseFloat(els.cv.style.width) || els.wrap.clientWidth,
+      h: parseFloat(els.cv.style.height) || els.wrap.clientHeight
+    };
+  }
+
+  // bounds of world for fitting
+  function worldBounds() {
+    if (state.bg && state.bgEnabled) {
+      return { minX: 0, minY: 0, maxX: state.bg.width, maxY: state.bg.height };
+    }
+    // иначе: по сетке (приближённо, но хватает для fit)
+    const { s, h } = hexMetrics();
+    const minX = state.offX - s;
+    const maxX = state.offX + (state.cols - 1) * (1.5 * s) + s;
+
+    // even-q: верх может быть на offY - h, низ на offY + (rows-1)*h + h/2
+    const minY = state.offY - h;
+    const maxY = state.offY + (state.rows - 1) * h + (h / 2);
+
+    return { minX, minY, maxX, maxY };
+  }
+
+  function setZoom(newZoom, anchorScreenX=null, anchorScreenY=null) {
+    const v = state.view;
+    const clamped = Math.max(v.minZoom, Math.min(v.maxZoom, newZoom));
+
+    // zoom around cursor (anchor point)
+    if (anchorScreenX != null && anchorScreenY != null) {
+      const before = screenToWorld(anchorScreenX, anchorScreenY);
+      v.zoom = clamped;
+      v.panX = anchorScreenX - before.x * v.zoom;
+      v.panY = anchorScreenY - before.y * v.zoom;
+    } else {
+      v.zoom = clamped;
+    }
+
+    syncZoomUI();
+    render();
+  }
+
+  function syncZoomUI() {
+    const pct = Math.round(state.view.zoom * 100);
+    els.zoomLbl.textContent = pct + '%';
+    els.viewPill.textContent = 'zoom: ' + pct + '%';
+    els.zoomSlider.value = String(Math.max(10, Math.min(400, pct)));
+  }
+
+  function fitView(margin=20) {
+    const { w: cw, h: ch } = canvasSize();
+    const b = worldBounds();
+    const ww = Math.max(1, b.maxX - b.minX);
+    const wh = Math.max(1, b.maxY - b.minY);
+
+    const scale = Math.min((cw - 2*margin) / ww, (ch - 2*margin) / wh);
+    const z = Math.max(state.view.minZoom, Math.min(state.view.maxZoom, scale));
+
+    state.view.zoom = z;
+    state.view.panX = (cw - ww * z) / 2 - b.minX * z;
+    state.view.panY = (ch - wh * z) / 2 - b.minY * z;
+
+    syncZoomUI();
+    render();
+  }
+
+  // ======= Rendering (with pan/zoom) =======
+  function render() {
+    const { w: W, h: H } = canvasSize();
+
+    // clear in screen coords
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    // apply view transform: screen = world * zoom + pan
+    ctx.save();
+    ctx.setTransform(dpr*state.view.zoom, 0, 0, dpr*state.view.zoom, dpr*state.view.panX, dpr*state.view.panY);
+
+    // background in world coords
+    if (state.bg && state.bgEnabled) {
+      ctx.drawImage(state.bg, 0, 0);
+    } else {
+      // checker in world coords (приятнее, чем пустота)
+      const step = 48;
+      const b = worldBounds();
+      const startX = Math.floor(b.minX / step) * step;
+      const startY = Math.floor(b.minY / step) * step;
+      const endX = Math.ceil(b.maxX / step) * step;
+      const endY = Math.ceil(b.maxY / step) * step;
+      for (let y = startY; y < endY; y += step) {
+        for (let x = startX; x < endX; x += step) {
+          ctx.fillStyle = ((x/step + y/step) % 2 === 0) ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.06)';
+          ctx.fillRect(x, y, step, step);
+        }
+      }
+    }
+
+    // painted cells
+    ctx.save();
+    ctx.globalAlpha = state.alpha;
+    for (let row = 0; row < state.rows; row++) {
+      for (let col = 0; col < state.cols; col++) {
+        const ci = state.paint[row][col];
+        if (ci < 0) continue;
+        const { x, y } = centerFor(col, row);
+        const poly = polygonFor(x, y);
+        ctx.beginPath();
+        ctx.moveTo(poly[0].x, poly[0].y);
+        for (let i=1;i<poly.length;i++) ctx.lineTo(poly[i].x, poly[i].y);
+        ctx.closePath();
+        ctx.fillStyle = PALETTE[ci].hex;
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // grid lines
+    if (state.showGrid) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 1 / state.view.zoom; // чтобы линия была визуально примерно одинаковой
+      for (let row = 0; row < state.rows; row++) {
+        for (let col = 0; col < state.cols; col++) {
+          const { x, y } = centerFor(col, row);
+          const poly = polygonFor(x, y);
+          ctx.beginPath();
+          ctx.moveTo(poly[0].x, poly[0].y);
+          for (let i=1;i<poly.length;i++) ctx.lineTo(poly[i].x, poly[i].y);
+          ctx.closePath();
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  // ======= Palette UI =======
+  function buildPalette() {
+    els.palette.innerHTML = '';
+    PALETTE.forEach((c, idx) => {
+      const d = document.createElement('div');
+      d.className = 'sw' + (idx === state.selectedColor ? ' selected' : '');
+      d.title = `${idx+1}: ${c.name} (${c.hex})`;
+      d.style.background = c.hex;
+      d.addEventListener('click', () => {
+        state.selectedColor = idx;
+        syncPaletteSelection();
+      });
+      els.palette.appendChild(d);
+    });
+  }
+  function syncPaletteSelection() {
+    [...els.palette.children].forEach((el, i) => el.classList.toggle('selected', i === state.selectedColor));
+  }
+
+  // ======= Painting / Panning =======
+  let isDown = false;
+  let isPanning = false;
+  let downButton = 0;
+  let lastCellKey = null;
+  let lastPan = { x:0, y:0 };
+
+  function cellKey(c) { return c ? `${c.col},${c.row}` : ''; }
+
+  function applyAt(cell, action) {
+    if (!cell) return;
+    const { col, row } = cell;
+
+    // blocked -> игнор
+    if (state.blocked[row][col]) return;
+
+    if (action === 'erase') {
+      state.paint[row][col] = -1;
+      render();
+      return;
+    }
+
+    if (state.cycleOnClick) {
+      const cur = state.paint[row][col];
+      const next = (cur < 0) ? 0 : (cur + 1) % PALETTE.length;
+      state.paint[row][col] = next;
+    } else {
+      state.paint[row][col] = state.selectedColor;
+    }
+    render();
+  }
+
+  function pointerPos(ev) {
+    const r = els.cv.getBoundingClientRect();
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  }
+
+  els.cv.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  els.cv.addEventListener('pointerdown', (e) => {
+    els.cv.setPointerCapture(e.pointerId);
+    isDown = true;
+    downButton = e.button;
+
+    const p = pointerPos(e);
+
+    // панорамирование: средняя кнопка или Shift+ЛКМ
+    if (downButton === 1 || (downButton === 0 && e.shiftKey)) {
+      isPanning = true;
+      lastPan = { x: p.x, y: p.y };
+      els.cv.style.cursor = 'grabbing';
+      return;
+    }
+
+    const w = screenToWorld(p.x, p.y);
+    const cell = pixelToCell(w.x, w.y);
+    lastCellKey = cellKey(cell);
+
+    const action = (downButton === 2) ? 'erase' : 'paint';
+    applyAt(cell, action);
+  });
+
+  els.cv.addEventListener('pointermove', (e) => {
+    const p = pointerPos(e);
+    const w = screenToWorld(p.x, p.y);
+    const cell = pixelToCell(w.x, w.y);
+    if (cell) els.coord.textContent = `col: ${cell.col}  row: ${cell.row}`;
+    else els.coord.textContent = `col: —  row: —`;
+
+    if (!isDown) {
+      els.cv.style.cursor = e.shiftKey ? 'grab' : 'crosshair';
+      return;
+    }
+
+    if (isPanning) {
+      const dx = p.x - lastPan.x;
+      const dy = p.y - lastPan.y;
+      lastPan = { x: p.x, y: p.y };
+      state.view.panX += dx;
+      state.view.panY += dy;
+      render();
+      return;
+    }
+
+    const k = cellKey(cell);
+    if (!cell || k === lastCellKey) return;
+    lastCellKey = k;
+
+    const action = (downButton === 2) ? 'erase' : 'paint';
+    applyAt(cell, action);
+  });
+
+  window.addEventListener('pointerup', () => {
+    isDown = false;
+    isPanning = false;
+    lastCellKey = null;
+    els.cv.style.cursor = 'crosshair';
+  });
+
+  // Wheel zoom (around cursor)
+  els.cv.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const p = pointerPos(e);
+    const factor = (e.deltaY < 0) ? 1.1 : 1/1.1;
+    setZoom(state.view.zoom * factor, p.x, p.y);
+  }, { passive: false });
+
+  // ======= Controls =======
+  els.alpha.addEventListener('input', () => { state.alpha = parseFloat(els.alpha.value); els.alphaLbl.textContent = state.alpha.toFixed(2); render(); });
+  els.showGrid.addEventListener('change', () => { state.showGrid = els.showGrid.checked; render(); });
+  els.cycleOnClick.addEventListener('change', () => { state.cycleOnClick = els.cycleOnClick.checked; });
+
+  function resizeGrid(newR, newC) {
+    const oldPaint = state.paint;
+    const oldR = oldPaint.length;
+    const oldC = oldPaint[0]?.length || 0;
+
+    state.rows = newR;
+    state.cols = newC;
+
+    state.paint = Array.from({length:newR}, (_, r) =>
+      Array.from({length:newC}, (_, c) => (r<oldR && c<oldC) ? oldPaint[r][c] : -1)
+    );
+
+    state.blocked = Array.from({length:newR}, () => Array(newC).fill(false));
+    applyBlockedFromList();
+    render();
+  }
+
+  els.rows.addEventListener('change', () => { resizeGrid(parseInt(els.rows.value,10), state.cols); });
+  els.cols.addEventListener('change', () => { resizeGrid(state.rows, parseInt(els.cols.value,10)); });
+
+  els.hexSize.addEventListener('input', () => { state.size = parseFloat(els.hexSize.value); els.sizeLbl.textContent = state.size.toFixed(1); render(); });
+  els.offX.addEventListener('input', () => { state.offX = parseFloat(els.offX.value); render(); });
+  els.offY.addEventListener('input', () => { state.offY = parseFloat(els.offY.value); render(); });
+
+  document.querySelectorAll('button[data-nudge]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const axis = btn.dataset.axis;
+      const v = parseFloat(btn.dataset.nudge);
+      if (axis === 'x') { state.offX += v; els.offX.value = state.offX.toFixed(1); }
+      if (axis === 'y') { state.offY += v; els.offY.value = state.offY.toFixed(1); }
+      render();
+    });
+  });
+
+  // ======= Background loading =======
+  els.bgFile.addEventListener('change', (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    const img = new Image();
+    img.onload = () => {
+      state.bg = img;
+      state.bgEnabled = true;
+      // после загрузки сразу "вписать"
+      fitView();
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  });
+
+  els.clearBgBtn.addEventListener('click', () => {
+    state.bg = null;
+    state.bgEnabled = false;
+    fitView();
+  });
+
+  // Zoom UI
+  els.zoomSlider.addEventListener('input', () => {
+    const pct = parseInt(els.zoomSlider.value, 10);
+    setZoom(pct / 100);
+  });
+  els.zoomInBtn.addEventListener('click', () => setZoom(state.view.zoom * 1.1));
+  els.zoomOutBtn.addEventListener('click', () => setZoom(state.view.zoom / 1.1));
+  els.oneBtn.addEventListener('click', () => setZoom(1));
+  els.fitBtn.addEventListener('click', () => fitView());
+
+  // ======= Export / Import =======
+  function exportJSON() {
+    const payload = {
+      v: 4,
+      rows: state.rows,
+      cols: state.cols,
+      size: state.size,
+      offX: state.offX,
+      offY: state.offY,
+      alpha: state.alpha,
+      paint: state.paint,
+      blockedCells: BLOCKED_CELLS,
+      palette: PALETTE,
+      view: { zoom: state.view.zoom, panX: state.view.panX, panY: state.view.panY }
+    };
+    els.jsonBox.value = JSON.stringify(payload);
+  }
+
+  function importJSON() {
+    let obj;
+    try { obj = JSON.parse(els.jsonBox.value); }
+    catch { alert('JSON не парсится'); return; }
+
+    if (!obj || typeof obj !== 'object' || !Array.isArray(obj.paint)) { alert('Нет paint'); return; }
+
+    state.rows = obj.rows ?? obj.paint.length;
+    state.cols = obj.cols ?? (obj.paint[0]?.length || 0);
+    state.paint = obj.paint;
+
+    if (typeof obj.size === 'number') state.size = obj.size;
+    if (typeof obj.offX === 'number') state.offX = obj.offX;
+    if (typeof obj.offY === 'number') state.offY = obj.offY;
+    if (typeof obj.alpha === 'number') state.alpha = obj.alpha;
+
+    state.blocked = Array.from({length:state.rows}, () => Array(state.cols).fill(false));
+    applyBlockedFromList();
+
+    // view (optional)
+    if (obj.view && typeof obj.view.zoom === 'number') {
+      state.view.zoom = obj.view.zoom;
+      state.view.panX = obj.view.panX ?? state.view.panX;
+      state.view.panY = obj.view.panY ?? state.view.panY;
+    }
+
+    // sync UI
+    els.rows.value = state.rows;
+    els.cols.value = state.cols;
+    els.hexSize.value = state.size;
+    els.offX.value = state.offX.toFixed(1);
+    els.offY.value = state.offY.toFixed(1);
+    els.alpha.value = state.alpha;
+    els.alphaLbl.textContent = state.alpha.toFixed(2);
+    els.sizeLbl.textContent = state.size.toFixed(1);
+    syncZoomUI();
+    render();
+  }
+
+  els.exportJsonBtn.addEventListener('click', exportJSON);
+  els.importJsonBtn.addEventListener('click', importJSON);
+
+  els.clearPaintBtn.addEventListener('click', () => {
+    for (let r=0;r<state.rows;r++) {
+      for (let c=0;c<state.cols;c++) {
+        if (!state.blocked[r][c]) state.paint[r][c] = -1;
+      }
+    }
+    render();
+  });
+
+  // Export visible PNG (as shown)
+  els.downloadPngBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.download = 'hex-plan.png';
+    a.href = els.cv.toDataURL('image/png');
+    a.click();
+  });
+
+  // ======= Keyboard shortcuts =======
+  window.addEventListener('keydown', (e) => {
+    if (e.key >= '1' && e.key <= '9') {
+      const idx = parseInt(e.key, 10) - 1;
+      if (idx < PALETTE.length) {
+        state.selectedColor = idx;
+        syncPaletteSelection();
+      }
+    }
+    if (e.key === 'Escape') { isDown = false; isPanning = false; lastCellKey = null; }
+  });
+
+  // ======= Init =======
+  buildPalette();
+  els.alphaLbl.textContent = state.alpha.toFixed(2);
+  els.sizeLbl.textContent = state.size.toFixed(1);
+  syncZoomUI();
+  resizeCanvasToWrap();
+  // старт: вписать сетку/фон в экран
+  fitView();
+})();
+</script>
+</body>
+</html>
